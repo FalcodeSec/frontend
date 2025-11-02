@@ -1,12 +1,64 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { SidebarProvider, SidebarTrigger } from "@/src/components/ui/sidebar";
 import { DashboardSidebar } from "./sidebar";
 import { Button } from "@/src/components/ui/button";
 import { Menu } from "lucide-react";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Check if user is authenticated via cookie
+    const checkAuth = async () => {
+      try {
+        console.log("Dashboard: Checking authentication...");
+        const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        console.log("Dashboard: Backend URL:", BACKEND_URL);
+
+        const response = await fetch(`${BACKEND_URL}/api/v1/login/validate-session`, {
+          credentials: 'include', // Send cookies with request
+        });
+
+        console.log("Dashboard: Validation response status:", response.status);
+
+        if (response.ok) {
+          const userData = await response.json();
+          setIsAuthenticated(true);
+        } else {
+          const errorText = await response.text();
+          console.log("Dashboard: Token validation failed:", response.status, errorText);
+          router.push('/login');
+        }
+      } catch (error) {
+        console.error("Dashboard: Auth check failed:", error);
+        router.push('/login');
+      }
+    };
+
+    checkAuth();
+  }, [router]);
+
+  // Show loading while checking authentication
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render dashboard if not authenticated (will redirect)
+  if (!isAuthenticated) {
+    return null;
+  }
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gray-50 overflow-hidden">

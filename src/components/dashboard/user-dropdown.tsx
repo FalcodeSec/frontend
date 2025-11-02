@@ -1,9 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { LogOut, User } from "lucide-react";
-import { useSession, signOut } from "next-auth/react";
 import {
   Avatar,
   AvatarFallback,
@@ -23,15 +23,43 @@ import {
   SidebarMenuButton,
 } from "@/src/components/ui/sidebar";
 
-export function UserDropdown() {
-  const { data: session } = useSession();
+interface UserData {
+  id: number;
+  login: string;
+  name?: string;
+  email?: string;
+  avatar_url?: string;
+}
 
-  if (!session?.user) {
+export function UserDropdown() {
+  const router = useRouter();
+  const [user, setUser] = useState<UserData | null>(null);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        const response = await fetch(`${BACKEND_URL}/api/v1/login/validate-session`, {
+          credentials: 'include', // Send cookies with request
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
+    };
+
+    fetchUserData();
+  }, []);
+
+  if (!user) {
     return null;
   }
 
-  const user = session.user;
-  const userLogin = (user as any).login || user.email?.split("@")[0] || "User";
+  const userLogin = user.login || user.email?.split("@")[0] || "User";
   const initials = user.name
     ? user.name
         .split(" ")
@@ -42,7 +70,16 @@ export function UserDropdown() {
     : userLogin.substring(0, 2).toUpperCase();
 
   const handleSignOut = async () => {
-    await signOut({ redirect: true, callbackUrl: "/login" });
+    try {
+      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      await fetch(`${BACKEND_URL}/api/v1/login/logout`, {
+        method: 'POST',
+        credentials: 'include', // Send cookies with request
+      });
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
+    router.push('/login');
   };
 
   return (
@@ -55,7 +92,7 @@ export function UserDropdown() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={user.image || undefined} alt={user.name || userLogin} />
+                <AvatarImage src={user.avatar_url || undefined} alt={user.name || userLogin} />
                 <AvatarFallback className="rounded-lg">
                   {initials}
                 </AvatarFallback>
@@ -75,7 +112,7 @@ export function UserDropdown() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.image || undefined} alt={user.name || userLogin} />
+                  <AvatarImage src={user.avatar_url || undefined} alt={user.name || userLogin} />
                   <AvatarFallback className="rounded-lg">
                     {initials}
                   </AvatarFallback>

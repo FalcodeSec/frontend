@@ -1,8 +1,9 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/src/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
 import { MessageSquare, Settings, Users, BarChart3 } from "lucide-react"
+import { useCurrentOrganization } from "@/src/hooks/use-current-organization"
 
 export function DashboardPage() {
   const stats = {
@@ -11,6 +12,7 @@ export function DashboardPage() {
     completedReviews: 0
   }
   const router = useRouter()
+  const { orgId } = useCurrentOrganization()
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -27,7 +29,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
         <Card
           className="cursor-pointer hover:shadow-lg transition-all duration-200 border-gray-200 bg-white hover:border-[#00617b]/30 hover:shadow-[#00617b]/10"
-          onClick={() => router.push("/dashboard/repositories")}
+          onClick={() => router.push(orgId ? `/dashboard/${orgId}/repositories` : "/dashboard")}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Repositories</CardTitle>
@@ -43,7 +45,7 @@ export function DashboardPage() {
 
         <Card
           className="cursor-pointer hover:shadow-lg transition-all duration-200 border-gray-200 bg-white hover:border-[#00617b]/30 hover:shadow-[#00617b]/10"
-          onClick={() => router.push("/dashboard/reports")}
+          onClick={() => router.push(orgId ? `/dashboard/${orgId}/reports` : "/dashboard")}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Reports</CardTitle>
@@ -59,7 +61,7 @@ export function DashboardPage() {
 
         <Card
           className="cursor-pointer hover:shadow-lg transition-all duration-200 border-gray-200 bg-white hover:border-[#00617b]/30 hover:shadow-[#00617b]/10"
-          onClick={() => router.push("/dashboard/profile")}
+          onClick={() => router.push(orgId ? `/dashboard/${orgId}/profile` : "/dashboard")}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Profile</CardTitle>
@@ -75,7 +77,7 @@ export function DashboardPage() {
 
         <Card
           className="cursor-pointer hover:shadow-lg transition-all duration-200 border-gray-200 bg-white hover:border-[#00617b]/30 hover:shadow-[#00617b]/10"
-          onClick={() => router.push("/dashboard/settings")}
+          onClick={() => router.push(orgId ? `/dashboard/${orgId}/settings` : "/dashboard")}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">Settings</CardTitle>
