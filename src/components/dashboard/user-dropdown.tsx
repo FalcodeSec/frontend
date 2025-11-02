@@ -37,16 +37,10 @@ export function UserDropdown() {
 
   useEffect(() => {
     const fetchUserData = async () => {
-      const token = localStorage.getItem('session_token');
-      if (!token) return;
-
       try {
         const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
         const response = await fetch(`${BACKEND_URL}/api/v1/login/validate-session`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'ngrok-skip-browser-warning': 'true',
-          },
+          credentials: 'include', // Send cookies with request
         });
 
         if (response.ok) {
@@ -76,7 +70,15 @@ export function UserDropdown() {
     : userLogin.substring(0, 2).toUpperCase();
 
   const handleSignOut = async () => {
-    localStorage.removeItem('session_token');
+    try {
+      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      await fetch(`${BACKEND_URL}/api/v1/login/logout`, {
+        method: 'POST',
+        credentials: 'include', // Send cookies with request
+      });
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
     router.push('/login');
   };
 

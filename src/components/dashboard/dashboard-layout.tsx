@@ -12,27 +12,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Check if user is authenticated
+    // Check if user is authenticated via cookie
     const checkAuth = async () => {
       try {
         console.log("Dashboard: Checking authentication...");
-        const token = localStorage.getItem('session_token');
-
-        if (!token) {
-          console.log("Dashboard: No session token found, redirecting to login");
-          router.push('/login');
-          return;
-        }
-
-        // Validate token with backend
         const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
         console.log("Dashboard: Backend URL:", BACKEND_URL);
 
         const response = await fetch(`${BACKEND_URL}/api/v1/login/validate-session`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'ngrok-skip-browser-warning': 'true',
-          },
+          credentials: 'include', // Send cookies with request
         });
 
         console.log("Dashboard: Validation response status:", response.status);
@@ -43,12 +31,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         } else {
           const errorText = await response.text();
           console.log("Dashboard: Token validation failed:", response.status, errorText);
-          localStorage.removeItem('session_token');
           router.push('/login');
         }
       } catch (error) {
         console.error("Dashboard: Auth check failed:", error);
-        localStorage.removeItem('session_token');
         router.push('/login');
       }
     };

@@ -13,12 +13,25 @@ export default function LoginPage() {
   const [selectedOption, setSelectedOption] = useState<'saas' | 'self-hosted'>('saas');
   const router = useRouter();
 
-  // Redirect to dashboard if already authenticated (check backend token)
+  // Check if user is already authenticated via cookie
   useEffect(() => {
-    const token = localStorage.getItem('session_token');
-    if (token) {
-      router.push("/dashboard");
-    }
+    const checkAuth = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/v1/login/validate-session`, {
+          credentials: 'include', // Send cookies with request
+        });
+
+        if (response.ok) {
+          // User is already authenticated, redirect to dashboard
+          router.push("/dashboard");
+        }
+      } catch (error) {
+        // User not authenticated, stay on login page
+        console.log('Not authenticated, showing login page');
+      }
+    };
+
+    checkAuth();
   }, [router]);
 
   const handleGitHubLogin = () => {

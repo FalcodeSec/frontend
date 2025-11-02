@@ -117,19 +117,9 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
     const fetchRepositories = async () => {
       try {
         setIsLoading(true);
-        const token = localStorage.getItem("session_token");
-
-        if (!token) {
-          setError("No authentication token found");
-          setIsLoading(false);
-          return;
-        }
 
         const response = await fetch(`${BACKEND_URL}/api/v1/repositories/`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "ngrok-skip-browser-warning": "true",
-          },
+          credentials: 'include', // Send cookies with request
         });
 
         if (!response.ok) {
@@ -233,9 +223,9 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
 
     const response = await fetch(`${BACKEND_URL}/api/v1/github-app/${organizationId}/install`, {
       method: "POST",
+      credentials: 'include', // Send cookies with request
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${localStorage.getItem("session_token")}`,
       },
     });
 

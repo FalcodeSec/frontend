@@ -13,24 +13,13 @@ export function useCurrentOrganization() {
 
   useEffect(() => {
     async function fetchOrgId() {
-      // Get token from localStorage (stored during auth callback)
-      const token = typeof window !== 'undefined' ? localStorage.getItem('session_token') : null;
-
-      if (!token) {
-        setLoading(false);
-        setError("Not authenticated or no token");
-        console.log("Available localStorage keys:", Object.keys(localStorage));
-        return;
-      }
-
       try {
         const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
         const response = await fetch(`${BACKEND_URL}/api/v1/login/user/org-id`, {
           method: 'GET',
+          credentials: 'include', // Send cookies with request
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            'ngrok-skip-browser-warning': 'true'
           },
         });
 
