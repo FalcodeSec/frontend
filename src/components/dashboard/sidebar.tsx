@@ -27,16 +27,17 @@ import {
   SidebarMenuButton,
 } from "@/src/components/ui/sidebar";
 import { UserDropdown } from "./user-dropdown";
+import { useCurrentOrganization } from "@/src/hooks/use-current-organization";
 
 // Navigation Items
-const getNavigationItems = () => [
+const getNavigationItems = (orgId: string | null) => [
   { title: "Home", url: "/dashboard", icon: Home },
-  { title: "Repositories", url: "/dashboard/repositories", icon: GitBranch },
-  { title: "Integrations", url: "/dashboard/integrations", icon: Plug, locked: true },
-  { title: "Reports", url: "/dashboard/reports", icon: BarChart2, locked: true },
-  { title: "Learnings", url: "/dashboard/learnings", icon: BookOpen },
-  { title: "Organization Settings", url: "/dashboard/settings", icon: Settings },
-  { title: "Subscription", url: "/dashboard/subscription", icon: DollarSign },
+  { title: "Repositories", url: `/dashboard/${orgId}/repositories`, icon: GitBranch },
+  { title: "Integrations", url: `/dashboard/${orgId}/integrations` , icon: Plug, locked: true },
+  { title: "Reports", url: `/dashboard/${orgId}/reports` , icon: BarChart2, locked: true },
+  { title: "Learnings", url: `/dashboard/${orgId}/learnings` , icon: BookOpen },
+  { title: "Organization Settings", url:  `/dashboard/${orgId}/settings` , icon: Settings },
+  { title: "Subscription", url: `/dashboard/${orgId}/subscription` , icon: DollarSign },
 ];
 
 const bottomItems = [
@@ -46,7 +47,45 @@ const bottomItems = [
 
 export function DashboardSidebar() {
   const pathname = usePathname();
-  const navigationItems = getNavigationItems();
+  const { orgId, loading, error } = useCurrentOrganization();
+  const navigationItems = getNavigationItems(orgId);
+
+  // Show loading state
+  if (loading) {
+    return (
+      <Sidebar className="shadow-sm border-r border-gray-200 flex-shrink-0 bg-white">
+        <SidebarHeader className="border-b border-gray-200 pb-4 space-y-4">
+          <div className="px-2 py-2">
+            <h2 className="text-sm font-semibold">Falcode</h2>
+          </div>
+        </SidebarHeader>
+        <SidebarContent className="px-2 overflow-y-auto">
+          <div className="flex items-center justify-center py-8">
+            <div className="text-sm text-gray-500">Loading...</div>
+          </div>
+        </SidebarContent>
+      </Sidebar>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    console.error("Error fetching org ID:", error);
+    return (
+      <Sidebar className="shadow-sm border-r border-gray-200 flex-shrink-0 bg-white">
+        <SidebarHeader className="border-b border-gray-200 pb-4 space-y-4">
+          <div className="px-2 py-2">
+            <h2 className="text-sm font-semibold">Falcode</h2>
+          </div>
+        </SidebarHeader>
+        <SidebarContent className="px-2 overflow-y-auto">
+          <div className="flex items-center justify-center py-8">
+            <div className="text-sm text-red-500">Error loading organization</div>
+          </div>
+        </SidebarContent>
+      </Sidebar>
+    );
+  }
 
   return (
     <Sidebar className="shadow-sm border-r border-gray-200 flex-shrink-0 bg-white">

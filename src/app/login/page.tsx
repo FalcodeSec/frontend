@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 
 import { Button } from "@/src/components/ui/button";
 import { Card, CardContent } from "@/src/components/ui/card";
@@ -13,14 +12,14 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:800
 export default function LoginPage() {
   const [selectedOption, setSelectedOption] = useState<'saas' | 'self-hosted'>('saas');
   const router = useRouter();
-  const { data: session, status } = useSession();
 
-  // Redirect to dashboard if already authenticated
+  // Redirect to dashboard if already authenticated (check backend token)
   useEffect(() => {
-    if (status === "authenticated" && session) {
+    const token = localStorage.getItem('session_token');
+    if (token) {
       router.push("/dashboard");
     }
-  }, [status, session, router]);
+  }, [router]);
 
   const handleGitHubLogin = () => {
     // Redirect to FastAPI backend OAuth endpoint

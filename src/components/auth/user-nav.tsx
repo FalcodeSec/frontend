@@ -1,6 +1,7 @@
 "use client";
 
-import { signOut, useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/src/components/ui/avatar";
 import { Button } from "@/src/components/ui/button";
 import {
@@ -12,15 +13,49 @@ import {
   DropdownMenuTrigger,
 } from "@/src/components/ui/dropdown-menu";
 
-export function UserNav() {
-  const { data: session } = useSession();
+interface UserData {
+  id: number;
+  login: string;
+  name?: string;
+  email?: string;
+  avatar_url?: string;
+}
 
-  if (!session?.user) {
+export function UserNav() {
+  const router = useRouter();
+  const [user, setUser] = useState<UserData | null>(null);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const token = localStorage.getItem('session_token');
+      if (!token) return;
+
+      try {
+        const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        const response = await fetch(`${BACKEND_URL}/api/v1/login/validate-session`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'ngrok-skip-browser-warning': 'true',
+          },
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
+    };
+
+    fetchUserData();
+  }, []);
+
+  if (!user) {
     return null;
   }
 
-  const user = session.user;
-  const userLogin = (user as any).login || user.email?.split("@")[0] || "User";
+  const userLogin = user.login || user.email?.split("@")[0] || "User";
   const initials = user.name
     ? user.name
         .split(" ")
@@ -29,6 +64,11 @@ export function UserNav() {
         .join("")
         .toUpperCase()
     : userLogin.substring(0, 2).toUpperCase();
+
+  const handleSignOut = () => {
+    localStorage.removeItem('session_token');
+    router.push('/login');
+  };
 
   return (
     <DropdownMenu>
@@ -39,7 +79,7 @@ export function UserNav() {
           aria-label="Open user menu"
         >
           <Avatar className="h-10 w-10">
-            <AvatarImage src={user.image || undefined} alt={user.name || userLogin} />
+            <AvatarImage src={user.avatar_url || undefined} alt={user.name || userLogin} />
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
         </Button>
@@ -54,7 +94,7 @@ export function UserNav() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/login" })}>
+        <DropdownMenuItem onClick={handleSignOut}>
           Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
