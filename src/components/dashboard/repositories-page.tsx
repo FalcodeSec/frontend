@@ -572,21 +572,11 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
             <h3 className="text-lg font-medium text-slate-900 mb-2">
               {repositories.length === 0 ? "No repositories found" : "No matching repositories"}
             </h3>
-            <p className="text-slate-600 mb-6">
+            <p className="text-slate-600">
               {repositories.length === 0
                 ? "Get started by adding your first repository to enable code reviews."
                 : "Try adjusting your search or filters to find what you're looking for."}
             </p>
-            {repositories.length === 0 && (
-              <Button
-                onClick={handleAddRepository}
-                disabled={isAddingRepository}
-                className="gap-2 bg-[#00617b] hover:bg-[#004d61]"
-              >
-                <Plus className="h-4 w-4" />
-                {isAddingRepository ? "Adding..." : "Add Repository"}
-              </Button>
-            )}
           </div>
         </div>
       ) : (
