@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LoadingSpinner } from "@/src/components/dashboard/loading-spinner";
 import { Button } from "@/src/components/ui/button";
+import { apiFetch } from "@/src/lib/api";
 import {
   Table,
   TableBody,
@@ -35,6 +37,16 @@ import {
   PaginationItem,
   PaginationLink,
 } from "@/src/components/ui/pagination";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/src/components/ui/alert-dialog";
 import {
   GitBranch,
   Lock,
@@ -93,10 +105,12 @@ interface RepositoriesPageProps {
   organizationId: string;
 }
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 const ITEMS_PER_PAGE = 10;
 
 export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   // Data state
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -112,47 +126,61 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   // Pagination state
   const [currentPage, setCurrentPage] = React.useState(1);
 
-  // Fetch repositories with enhanced data
+  // Remove repository dialog state
+  const [removeDialogOpen, setRemoveDialogOpen] = React.useState(false);
+  const [repositoryToRemove, setRepositoryToRemove] = React.useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+
+  // Handle GitLab connection redirect
   React.useEffect(() => {
-    const fetchRepositories = async () => {
-      try {
-        setIsLoading(true);
+    const connectParam = searchParams.get("connect");
+    if (connectParam === "gitlab") {
+      // Redirect to GitLab repository selection page
+      router.push(`/dashboard/${organizationId}/repositories/select-gitlab`);
+    }
+  }, [searchParams, router, organizationId]);
 
-        const response = await fetch(`${BACKEND_URL}/api/v1/repositories/`, {
-          credentials: 'include', // Send cookies with request
-        });
+  // Fetch repositories with enhanced data
+  const fetchRepositories = React.useCallback(async () => {
+    try {
+      setIsLoading(true);
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch repositories");
-        }
+      const response = await apiFetch('/api/v1/repositories/');
 
-        const data = await response.json();
-
-        // Enhance repositories with mock data (TODO: get from backend)
-        const enhancedRepos = (data.repositories || []).map((repo: Repository, index: number) => ({
-          ...repo,
-          vulnerability_count: Math.floor(Math.random() * 15),
-          recent_activity: Math.floor(Math.random() * 20),
-          agent_assigned: index % 3 === 0 ? "gpt-4o" : index % 3 === 1 ? "claude-3-sonnet" : undefined,
-          monitoring_enabled: index % 2 === 0,
-          last_scan: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-          health_score:
-            Math.random() > 0.7 ? "healthy" :
-            Math.random() > 0.4 ? "warning" : "critical",
-        }));
-
-        setRepositories(enhancedRepos);
-        setUserLogin(data.user_login || "");
-      } catch (err) {
-        console.error("Error fetching repositories:", err);
-        setError(err instanceof Error ? err.message : "Failed to load repositories");
-      } finally {
-        setIsLoading(false);
+      if (!response.ok) {
+        throw new Error("Failed to fetch repositories");
       }
-    };
 
-    fetchRepositories();
+      const data = await response.json();
+
+      // Enhance repositories with mock data (TODO: get from backend)
+      const enhancedRepos = (data.repositories || []).map((repo: Repository, index: number) => ({
+        ...repo,
+        vulnerability_count: Math.floor(Math.random() * 15),
+        recent_activity: Math.floor(Math.random() * 20),
+        agent_assigned: index % 3 === 0 ? "gpt-4o" : index % 3 === 1 ? "claude-3-sonnet" : undefined,
+        monitoring_enabled: index % 2 === 0,
+        last_scan: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+        health_score:
+          Math.random() > 0.7 ? "healthy" :
+          Math.random() > 0.4 ? "warning" : "critical",
+      }));
+
+      setRepositories(enhancedRepos);
+      setUserLogin(data.user_login || "");
+    } catch (err) {
+      console.error("Error fetching repositories:", err);
+      setError(err instanceof Error ? err.message : "Failed to load repositories");
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  React.useEffect(() => {
+    fetchRepositories();
+  }, [fetchRepositories]);
 
   // Reset to page 1 when filters change
   React.useEffect(() => {
@@ -221,22 +249,57 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   const handleAddRepository = async () => {
     console.log("Validating session...");
 
-    const response = await fetch(`${BACKEND_URL}/api/v1/github-app/${organizationId}/install`, {
-      method: "POST",
-      credentials: 'include', // Send cookies with request
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    try {
+      const response = await apiFetch(`/api/v1/vcs-app/${organizationId}/install`, {
+        method: "POST",
+      });
 
-    if (!response.ok) {
-      const data = await response.json();
-      console.error("Error installing repository:", data.detail);
-      return;
+      if (!response.ok) {
+        const data = await response.json();
+        console.error("Error installing repository:", data.detail);
+        return;
+      }
+
+      const { redirect_url } = await response.json();
+      window.location.href = redirect_url;
+    } catch (error) {
+      console.error("Error installing repository:", error);
     }
+  };
 
-    const { redirect_url } = await response.json();
-    window.location.href = redirect_url;
+  const openRemoveDialog = (repositoryId: number, repositoryName: string) => {
+    setRepositoryToRemove({ id: repositoryId, name: repositoryName });
+    setRemoveDialogOpen(true);
+  };
+
+  const handleRemoveRepository = async () => {
+    if (!repositoryToRemove) return;
+
+    try {
+      const response = await apiFetch(`/api/v1/vcs-app/repositories/${repositoryToRemove.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        console.error("Error removing repository:", data.detail);
+        alert(`Failed to remove repository: ${data.detail}`);
+        return;
+      }
+
+      const result = await response.json();
+      console.log("Repository removed:", result);
+
+      // Close dialog and reset state
+      setRemoveDialogOpen(false);
+      setRepositoryToRemove(null);
+
+      // Refresh the repositories list
+      await fetchRepositories();
+    } catch (error) {
+      console.error("Error removing repository:", error);
+      alert("Failed to remove repository. Please try again.");
+    }
   };
 
   const getHealthScoreColor = (score?: string) => {
@@ -594,7 +657,10 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
                             View Security Report
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-red-600">
+                          <DropdownMenuItem
+                            className="text-red-600"
+                            onClick={() => openRemoveDialog(repo.id!, repo.full_name || repo.name)}
+                          >
                             <Trash2 className="h-4 w-4 mr-2" />
                             Remove Repository
                           </DropdownMenuItem>
@@ -648,7 +714,10 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
                             View Security Report
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-red-600">
+                          <DropdownMenuItem
+                            className="text-red-600"
+                            onClick={() => openRemoveDialog(repo.id!, repo.full_name || repo.name)}
+                          >
                             <Trash2 className="h-4 w-4 mr-2" />
                             Remove Repository
                           </DropdownMenuItem>
@@ -800,6 +869,30 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
           Showing {filteredRepositories.length} {filteredRepositories.length === 1 ? "repository" : "repositories"}
         </div>
       )}
+
+      {/* Remove Repository Confirmation Dialog */}
+      <AlertDialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Repository</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove <span className="font-semibold text-slate-900">{repositoryToRemove?.name}</span>?
+              <br />
+              <br />
+              This will delete the webhook and stop monitoring this repository. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveRepository}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Remove Repository
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

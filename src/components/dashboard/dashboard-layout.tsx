@@ -1,27 +1,37 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { SidebarProvider, SidebarTrigger } from "@/src/components/ui/sidebar";
 import { DashboardSidebar } from "./sidebar";
 import { Button } from "@/src/components/ui/button";
 import { Menu } from "lucide-react";
+import { apiFetch, setSessionToken } from "@/src/lib/api";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Check if user is authenticated via cookie
+    // Extract session token from URL if present (for cross-origin OAuth)
+    const tokenFromUrl = searchParams.get('session_token');
+    if (tokenFromUrl) {
+      console.log("Dashboard: Found session token in URL, storing it...");
+      setSessionToken(tokenFromUrl);
+
+      // Remove token from URL for security
+      const url = new URL(window.location.href);
+      url.searchParams.delete('session_token');
+      window.history.replaceState({}, '', url.toString());
+    }
+
+    // Check if user is authenticated via cookie or stored token
     const checkAuth = async () => {
       try {
         console.log("Dashboard: Checking authentication...");
-        const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-        console.log("Dashboard: Backend URL:", BACKEND_URL);
 
-        const response = await fetch(`${BACKEND_URL}/api/v1/login/validate-session`, {
-          credentials: 'include', // Send cookies with request
-        });
+        const response = await apiFetch('/api/v1/login/validate-session');
 
         console.log("Dashboard: Validation response status:", response.status);
 
@@ -40,7 +50,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     };
 
     checkAuth();
-  }, [router]);
+  }, [router, searchParams]);
 
   // Show loading while checking authentication
   if (isAuthenticated === null) {
