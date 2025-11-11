@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/src
 import { Checkbox } from "@/src/components/ui/checkbox";
 import { Input } from "@/src/components/ui/input";
 import { Badge } from "@/src/components/ui/badge";
-import { apiFetch } from "@/src/lib/api";
+import { apiFetch, clearSessionToken } from "@/src/lib/api";
 import { 
   GitBranch, 
   Search, 
@@ -97,11 +97,16 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
 
   // Toggle select all filtered projects
   const toggleSelectAll = () => {
-    if (selectedProjects.size === filteredProjects.length && filteredProjects.length > 0) {
-      // If all filtered projects are selected, deselect all
-      setSelectedProjects(new Set());
+    // Check if every filtered project is currently selected
+    const allFilteredSelected = filteredProjects.every((project) => selectedProjects.has(project.id));
+
+    if (allFilteredSelected && filteredProjects.length > 0) {
+      // If all filtered projects are selected, deselect only the filtered ones
+      const newSelected = new Set(selectedProjects);
+      filteredProjects.forEach((project) => newSelected.delete(project.id));
+      setSelectedProjects(newSelected);
     } else {
-      // Otherwise, select all filtered projects
+      // Otherwise, select all filtered projects (preserving existing selections)
       const newSelected = new Set(selectedProjects);
       filteredProjects.forEach((project) => newSelected.add(project.id));
       setSelectedProjects(newSelected);
@@ -184,11 +189,16 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
                 {isPermissionError && (
                   <div className="mt-4">
                     <Button
-                      onClick={() => {
-                        // Clear session and redirect to login
-                        document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-                        localStorage.removeItem("session_token");
-                        window.location.href = "/login";
+                      onClick={async () => {
+                        // Call logout API endpoint to invalidate session
+                        try {
+                          await apiFetch("/api/v1/login/logout", { method: "POST" });
+                        } catch (error) {
+                          console.error("Error during logout:", error);
+                        }
+                        // Clear session token from localStorage
+                        clearSessionToken();
+                        router.push("/login");
                       }}
                       className="bg-red-600 hover:bg-red-700"
                     >
@@ -319,7 +329,11 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
                 <div className="flex items-start gap-4">
                   <Checkbox
                     checked={selectedProjects.has(project.id)}
-                    onCheckedChange={() => toggleProject(project.id)}
+                    onCheckedChange={() => {
+                      // Prevent event from bubbling to Card onClick
+                      toggleProject(project.id);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
                     className="mt-1"
                   />
                   <div className="flex-1 min-w-0">

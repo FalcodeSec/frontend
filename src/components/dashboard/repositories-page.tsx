@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { LoadingSpinner } from "@/src/components/dashboard/loading-spinner";
 import { Button } from "@/src/components/ui/button";
 import { apiFetch } from "@/src/lib/api";
+import { useToast } from "@/src/components/ui/use-toast";
 import {
   Table,
   TableBody,
@@ -110,6 +111,7 @@ const ITEMS_PER_PAGE = 10;
 export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
 
   // Data state
   const [isLoading, setIsLoading] = React.useState(true);
@@ -132,6 +134,10 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
     id: number;
     name: string;
   } | null>(null);
+  const [isRemoving, setIsRemoving] = React.useState(false);
+
+  // Add repository loading state
+  const [isAddingRepository, setIsAddingRepository] = React.useState(false);
 
   // Handle GitLab connection redirect
   React.useEffect(() => {
@@ -156,17 +162,20 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
       const data = await response.json();
 
       // Enhance repositories with mock data (TODO: get from backend)
-      const enhancedRepos = (data.repositories || []).map((repo: Repository, index: number) => ({
-        ...repo,
-        vulnerability_count: Math.floor(Math.random() * 15),
-        recent_activity: Math.floor(Math.random() * 20),
-        agent_assigned: index % 3 === 0 ? "gpt-4o" : index % 3 === 1 ? "claude-3-sonnet" : undefined,
-        monitoring_enabled: index % 2 === 0,
-        last_scan: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-        health_score:
-          Math.random() > 0.7 ? "healthy" :
-          Math.random() > 0.4 ? "warning" : "critical",
-      }));
+      const enhancedRepos = (data.repositories || []).map((repo: Repository, index: number) => {
+        const seed = repo.id || index;
+        return {
+          ...repo,
+          vulnerability_count: seed % 15,
+          recent_activity: (seed * 7) % 20,
+          agent_assigned: index % 3 === 0 ? "gpt-4o" : index % 3 === 1 ? "claude-3-sonnet" : undefined,
+          monitoring_enabled: index % 2 === 0,
+          last_scan: new Date(Date.now() - (seed % 7) * 24 * 60 * 60 * 1000).toISOString(),
+          health_score:
+            seed % 3 === 0 ? "healthy" :
+            seed % 3 === 1 ? "warning" : "critical",
+        };
+      });
 
       setRepositories(enhancedRepos);
       setUserLogin(data.user_login || "");
@@ -247,7 +256,8 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
 
   // Helper functions
   const handleAddRepository = async () => {
-    console.log("Validating session...");
+    setIsAddingRepository(true);
+    setError(null);
 
     try {
       const response = await apiFetch(`/api/v1/vcs-app/${organizationId}/install`, {
@@ -256,14 +266,32 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
 
       if (!response.ok) {
         const data = await response.json();
-        console.error("Error installing repository:", data.detail);
+        const errorMessage = data.detail || "Failed to initiate repository installation";
+        setError(errorMessage);
+        toast({
+          title: "Installation Failed",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        setIsAddingRepository(false);
         return;
       }
 
       const { redirect_url } = await response.json();
+      // Clear any previous errors on success
+      setError(null);
       window.location.href = redirect_url;
     } catch (error) {
-      console.error("Error installing repository:", error);
+      const errorMessage = error instanceof Error
+        ? `Failed to add repository: ${error.message}`
+        : "An unexpected error occurred while adding repository";
+      setError(errorMessage);
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      setIsAddingRepository(false);
     }
   };
 
@@ -273,7 +301,9 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   };
 
   const handleRemoveRepository = async () => {
-    if (!repositoryToRemove) return;
+    if (!repositoryToRemove || isRemoving) return;
+
+    setIsRemoving(true);
 
     try {
       const response = await apiFetch(`/api/v1/vcs-app/repositories/${repositoryToRemove.id}`, {
@@ -283,12 +313,22 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
       if (!response.ok) {
         const data = await response.json();
         console.error("Error removing repository:", data.detail);
-        alert(`Failed to remove repository: ${data.detail}`);
+        toast({
+          title: "Failed to remove repository",
+          description: data.detail || "An error occurred while removing the repository.",
+          variant: "destructive",
+        });
         return;
       }
 
       const result = await response.json();
       console.log("Repository removed:", result);
+
+      // Show success toast
+      toast({
+        title: "Repository removed",
+        description: `${repositoryToRemove.name} has been successfully removed.`,
+      });
 
       // Close dialog and reset state
       setRemoveDialogOpen(false);
@@ -298,7 +338,13 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
       await fetchRepositories();
     } catch (error) {
       console.error("Error removing repository:", error);
-      alert("Failed to remove repository. Please try again.");
+      toast({
+        title: "Failed to remove repository",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRemoving(false);
     }
   };
 
@@ -379,9 +425,13 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
             Manage repositories for {userLogin}
           </p>
         </div>
-        <Button onClick={handleAddRepository} className="gap-2 bg-[#00617b] hover:bg-[#004d61]">
+        <Button
+          onClick={handleAddRepository}
+          disabled={isAddingRepository}
+          className="gap-2 bg-[#00617b] hover:bg-[#004d61]"
+        >
           <Plus className="h-4 w-4" />
-          Add Repository
+          {isAddingRepository ? "Adding..." : "Add Repository"}
         </Button>
       </div>
 
@@ -528,9 +578,13 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
                 : "Try adjusting your search or filters to find what you're looking for."}
             </p>
             {repositories.length === 0 && (
-              <Button onClick={handleAddRepository} className="gap-2 bg-[#00617b] hover:bg-[#004d61]">
+              <Button
+                onClick={handleAddRepository}
+                disabled={isAddingRepository}
+                className="gap-2 bg-[#00617b] hover:bg-[#004d61]"
+              >
                 <Plus className="h-4 w-4" />
-                Add Repository
+                {isAddingRepository ? "Adding..." : "Add Repository"}
               </Button>
             )}
           </div>
@@ -658,8 +712,19 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
+                            disabled={repo.id === undefined}
                             className="text-red-600"
-                            onClick={() => openRemoveDialog(repo.id!, repo.full_name || repo.name)}
+                            onClick={() => {
+                              if (repo.id === undefined) {
+                                toast({
+                                  title: "Cannot remove repository",
+                                  description: "Repository ID is missing.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              openRemoveDialog(repo.id, repo.full_name || repo.name);
+                            }}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
                             Remove Repository
@@ -715,8 +780,19 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
+                            disabled={repo.id === undefined}
                             className="text-red-600"
-                            onClick={() => openRemoveDialog(repo.id!, repo.full_name || repo.name)}
+                            onClick={() => {
+                              if (repo.id === undefined) {
+                                toast({
+                                  title: "Cannot remove repository",
+                                  description: "Repository ID is missing.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              openRemoveDialog(repo.id, repo.full_name || repo.name);
+                            }}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
                             Remove Repository
@@ -871,7 +947,15 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
       )}
 
       {/* Remove Repository Confirmation Dialog */}
-      <AlertDialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen}>
+      <AlertDialog
+        open={removeDialogOpen}
+        onOpenChange={(open) => {
+          // Prevent closing the dialog while removing
+          if (!isRemoving) {
+            setRemoveDialogOpen(open);
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Repository</AlertDialogTitle>
@@ -883,12 +967,13 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isRemoving}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRemoveRepository}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              disabled={isRemoving}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Remove Repository
+              {isRemoving ? "Removing..." : "Remove Repository"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

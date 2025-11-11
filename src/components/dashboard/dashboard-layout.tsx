@@ -6,7 +6,7 @@ import { SidebarProvider, SidebarTrigger } from "@/src/components/ui/sidebar";
 import { DashboardSidebar } from "./sidebar";
 import { Button } from "@/src/components/ui/button";
 import { Menu } from "lucide-react";
-import { apiFetch, setSessionToken } from "@/src/lib/api";
+import { apiFetch, setSessionToken, clearSessionToken } from "@/src/lib/api";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -16,40 +16,59 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Extract session token from URL if present (for cross-origin OAuth)
     const tokenFromUrl = searchParams.get('session_token');
-    if (tokenFromUrl) {
-      console.log("Dashboard: Found session token in URL, storing it...");
-      setSessionToken(tokenFromUrl);
-
-      // Remove token from URL for security
-      const url = new URL(window.location.href);
-      url.searchParams.delete('session_token');
-      window.history.replaceState({}, '', url.toString());
-    }
 
     // Check if user is authenticated via cookie or stored token
-    const checkAuth = async () => {
+    // Pass tokenFromUrl directly to avoid race condition
+    const checkAuth = async (token?: string) => {
       try {
         console.log("Dashboard: Checking authentication...");
 
-        const response = await apiFetch('/api/v1/login/validate-session');
+        // If token is provided, use it directly; otherwise apiFetch will use stored token
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+        };
+
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await apiFetch('/api/v1/login/validate-session', {
+          headers: token ? headers : undefined,
+        });
 
         console.log("Dashboard: Validation response status:", response.status);
 
         if (response.ok) {
-          const userData = await response.json();
+          await response.json(); // Consume response body
           setIsAuthenticated(true);
+
+          // Only store token and clean URL after successful validation
+          if (tokenFromUrl) {
+            console.log("Dashboard: Token validated, storing it...");
+            setSessionToken(tokenFromUrl);
+
+            // Remove token from URL for security
+            const url = new URL(window.location.href);
+            url.searchParams.delete('session_token');
+            window.history.replaceState({}, '', url.toString());
+          }
         } else {
           const errorText = await response.text();
           console.log("Dashboard: Token validation failed:", response.status, errorText);
+          // Clear invalid/expired token before redirecting
+          clearSessionToken();
           router.push('/login');
         }
       } catch (error) {
         console.error("Dashboard: Auth check failed:", error);
+        // Clear invalid/expired token before redirecting
+        clearSessionToken();
         router.push('/login');
       }
     };
 
-    checkAuth();
+    // Pass tokenFromUrl to checkAuth if it exists
+    checkAuth(tokenFromUrl || undefined);
   }, [router, searchParams]);
 
   // Show loading while checking authentication
