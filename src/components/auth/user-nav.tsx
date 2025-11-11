@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/src/components/ui/dropdown-menu";
+import { apiFetch, clearSessionToken } from "@/src/lib/api";
 
 interface UserData {
   id: number;
@@ -28,10 +29,7 @@ export function UserNav() {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-        const response = await fetch(`${BACKEND_URL}/api/v1/login/validate-session`, {
-          credentials: 'include', // Send cookies with request
-        });
+        const response = await apiFetch('/api/v1/login/validate-session');
 
         if (response.ok) {
           const userData = await response.json();
@@ -61,14 +59,14 @@ export function UserNav() {
 
   const handleSignOut = async () => {
     try {
-      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-      await fetch(`${BACKEND_URL}/api/v1/login/logout`, {
+      await apiFetch('/api/v1/login/logout', {
         method: 'POST',
-        credentials: 'include', // Send cookies with request
       });
     } catch (error) {
       console.error('Error during logout:', error);
     }
+    // Clear session token from localStorage
+    clearSessionToken();
     router.push('/login');
   };
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/src/lib/api";
 
 interface OrganizationData {
   orgId: string;
@@ -14,13 +15,8 @@ export function useCurrentOrganization() {
   useEffect(() => {
     async function fetchOrgId() {
       try {
-        const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-        const response = await fetch(`${BACKEND_URL}/api/v1/login/user/org-id`, {
+        const response = await apiFetch('/api/v1/login/user/org-id', {
           method: 'GET',
-          credentials: 'include', // Send cookies with request
-          headers: {
-            'Content-Type': 'application/json',
-          },
         });
 
         if (!response.ok) {
