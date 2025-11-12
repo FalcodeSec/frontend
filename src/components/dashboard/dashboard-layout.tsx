@@ -7,85 +7,123 @@ import { DashboardSidebar } from "./sidebar";
 import { Button } from "@/src/components/ui/button";
 import { Menu } from "lucide-react";
 import { apiFetch, setSessionToken, clearSessionToken } from "@/src/lib/api";
+import { useSession } from "@/src/hooks/use-session";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [tokenProcessed, setTokenProcessed] = useState(false);
+  const [isValidatingToken, setIsValidatingToken] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
 
+  // Handle OAuth callback token from URL
   useEffect(() => {
-    // Extract session token from URL if present (for cross-origin OAuth)
     const tokenFromUrl = searchParams.get('session_token');
 
-    // Check if user is authenticated via cookie or stored token
-    // Pass tokenFromUrl directly to avoid race condition
-    const checkAuth = async (token?: string) => {
-      try {
-        console.log("Dashboard: Checking authentication...");
+    if (tokenFromUrl && !tokenProcessed && !isValidatingToken) {
+      // Validate the token from URL before storing
+      const validateAndStoreToken = async () => {
+        setIsValidatingToken(true);
+        try {
+          console.log("Dashboard: Validating token from URL...");
 
-        // If token is provided, use it directly; otherwise apiFetch will use stored token
-        const headers: HeadersInit = {
-          'Content-Type': 'application/json',
-        };
+          const response = await apiFetch('/api/v1/login/validate-session', {
+            headers: {
+              'Authorization': `Bearer ${tokenFromUrl}`,
+            },
+          });
 
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const response = await apiFetch('/api/v1/login/validate-session', {
-          headers: token ? headers : undefined,
-        });
-
-        console.log("Dashboard: Validation response status:", response.status);
-
-        if (response.ok) {
-          await response.json(); // Consume response body
-          setIsAuthenticated(true);
-
-          // Only store token and clean URL after successful validation
-          if (tokenFromUrl) {
+          if (response.ok) {
             console.log("Dashboard: Token validated, storing it...");
+
+            // Store token in localStorage
             setSessionToken(tokenFromUrl);
 
             // Remove token from URL for security
             const url = new URL(window.location.href);
             url.searchParams.delete('session_token');
             window.history.replaceState({}, '', url.toString());
+
+            // Wait a tick to ensure localStorage write is complete
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Mark as processed - this will enable the useSession hook
+            setTokenProcessed(true);
+
+            // Mark session as ready after a small delay
+            setTimeout(() => setSessionReady(true), 100);
+          } else {
+            console.log("Dashboard: Token validation failed");
+            clearSessionToken();
+            router.push('/login');
           }
-        } else {
-          const errorText = await response.text();
-          console.log("Dashboard: Token validation failed:", response.status, errorText);
-          // Clear invalid/expired token before redirecting
+        } catch (error) {
+          console.error("Dashboard: Token validation error:", error);
           clearSessionToken();
           router.push('/login');
+        } finally {
+          setIsValidatingToken(false);
         }
-      } catch (error) {
-        console.error("Dashboard: Auth check failed:", error);
-        // Clear invalid/expired token before redirecting
-        clearSessionToken();
-        router.push('/login');
-      }
-    };
+      };
 
-    // Pass tokenFromUrl to checkAuth if it exists
-    checkAuth(tokenFromUrl || undefined);
-  }, [router, searchParams]);
+      validateAndStoreToken();
+    } else if (!tokenFromUrl) {
+      setTokenProcessed(true);
+      setSessionReady(true);
+    }
+  }, [searchParams, tokenProcessed, isValidatingToken, router]);
 
-  // Show loading while checking authentication
-  if (isAuthenticated === null) {
+  // Use React Query hook for session validation
+  // Only enable after token is stored and ready
+  const { data: sessionData, isLoading, error } = useSession(sessionReady);
+
+  // Debug logging
+  useEffect(() => {
+    console.log("Dashboard state:", {
+      tokenProcessed,
+      isLoading,
+      error: error?.message,
+      sessionData,
+    });
+  }, [tokenProcessed, isLoading, error, sessionData]);
+
+  // Handle authentication errors and invalid sessions
+  useEffect(() => {
+    if (error && tokenProcessed) {
+      console.error("Dashboard: Session validation failed:", error);
+      clearSessionToken();
+      router.push('/login');
+    } else if (tokenProcessed && !isLoading && !sessionData?.valid) {
+      console.log("Dashboard: Session not valid, redirecting to login...", sessionData);
+      clearSessionToken();
+      router.push('/login');
+    }
+  }, [error, tokenProcessed, isLoading, sessionData, router]);
+
+  // Show loading while checking authentication or processing token
+  if (!tokenProcessed || isValidatingToken || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading...</p>
+          <p className="text-gray-600 font-medium">
+            {isValidatingToken ? "Validating session..." : "Loading..."}
+          </p>
         </div>
       </div>
     );
   }
 
-  // Don't render dashboard if not authenticated (will redirect)
-  if (!isAuthenticated) {
-    return null;
+  // Don't render dashboard if not authenticated (will redirect via useEffect)
+  if (!sessionData?.valid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Redirecting...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
