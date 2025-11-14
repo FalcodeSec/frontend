@@ -6,25 +6,33 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/src/components/ui/button";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
-import { apiFetch, BACKEND_URL } from "@/src/lib/api";
+import { apiFetch, BACKEND_URL, getSessionToken } from "@/src/lib/api";
 
 export default function LoginPage() {
   const [selectedOption, setSelectedOption] = useState<'saas' | 'self-hosted'>('saas');
   const router = useRouter();
 
-  // Check if user is already authenticated via cookie
+  // Check if user is already authenticated
   useEffect(() => {
     const checkAuth = async () => {
+      // Only check if token exists
+      const token = getSessionToken();
+      if (!token) {
+        console.log('No token found, showing login page');
+        return;
+      }
+
       try {
         const response = await apiFetch('/api/v1/login/validate-session');
 
         if (response.ok) {
           // User is already authenticated, redirect to dashboard
+          console.log('User already authenticated, redirecting to dashboard');
           router.push("/dashboard");
         }
       } catch (error) {
         // User not authenticated, stay on login page
-        console.log('Not authenticated, showing login page');
+        console.log('Token validation failed, showing login page');
       }
     };
 
@@ -41,7 +49,10 @@ export default function LoginPage() {
     window.location.href = `${BACKEND_URL}/api/v1/login/gitlab/authorize`;
   };
 
-
+  const handleBitbucketLogin = () => {
+    // Redirect to FastAPI backend OAuth endpoint
+    window.location.href = `${BACKEND_URL}/api/v1/login/bitbucket/authorize`;
+  };
 
   const getAuthProviders = (option: 'saas' | 'self-hosted') => {
     if (option === 'saas') {
@@ -106,19 +117,19 @@ export default function LoginPage() {
         {
           name: "Login with Bitbucket Cloud",
           icon: () => (
-            <svg stroke="currentColor" 
-              fill="currentColor" 
-              strokeWidth="0" 
-              role="img" 
-              viewBox="0 0 24 24" 
-              className="mr-2 shrink-0 transition-transform duration-300" 
-              height="20" 
-              width="20" 
+            <svg stroke="currentColor"
+              fill="currentColor"
+              strokeWidth="0"
+              role="img"
+              viewBox="0 0 24 24"
+              className="mr-2 shrink-0 transition-transform duration-300"
+              height="20"
+              width="20"
               xmlns="http://www.w3.org/2000/svg">
               <path d="M.778 1.213a.768.768 0 00-.768.892l3.263 19.81c.084.5.515.868 1.022.873H19.95a.772.772 0 00.77-.646l3.27-20.03a.768.768 0 00-.768-.891zM14.52 15.53H9.522L8.17 8.466h7.561z"></path>
             </svg>
           ),
-          onClick: () => console.log("Bitbucket login - Coming soon"),
+          onClick: handleBitbucketLogin,
           color: "hover:text-[#0052cc] hover:bg-[#f4f8ff] hover:border-[#0052cc]/20"
         }
       ];

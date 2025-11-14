@@ -3,11 +3,11 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/src/components/ui/button";
-import { Card, CardContent } from "@/src/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Checkbox } from "@/src/components/ui/checkbox";
 import { Input } from "@/src/components/ui/input";
 import { Badge } from "@/src/components/ui/badge";
-import { apiFetch, clearSessionToken } from "@/src/lib/api";
+import { clearSessionToken, apiFetch } from "@/src/lib/api";
 import {
   GitBranch,
   Search,
@@ -19,43 +19,44 @@ import {
   RefreshCw
 } from "lucide-react";
 import {
-  useGitLabProjects,
-  useRefreshGitLabProjects,
-  useSelectGitLabProjects,
-} from "@/src/hooks/use-gitlab-repositories";
+  useBitbucketRepositories,
+  useRefreshBitbucketRepositories,
+  useSelectBitbucketRepositories,
+  type BitbucketRepository,
+} from "@/src/hooks/use-bitbucket-repositories";
 import { useRepositories } from "@/src/hooks/use-repositories";
 
-interface GitLabRepositorySelectionProps {
+interface BitbucketRepositorySelectionProps {
   organizationId: string;
 }
 
-export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySelectionProps) {
+export function BitbucketRepositorySelection({ organizationId }: BitbucketRepositorySelectionProps) {
   const router = useRouter();
 
   // React Query hooks
-  const { data, isLoading, error: queryError } = useGitLabProjects();
-  const { data: installedReposData, isLoading: isLoadingRepos } = useRepositories();
-  const refreshMutation = useRefreshGitLabProjects();
-  const selectMutation = useSelectGitLabProjects();
+  const { data, isLoading, error: queryError } = useBitbucketRepositories();
+  const { data: installedReposData } = useRepositories();
+  const refreshMutation = useRefreshBitbucketRepositories();
+  const selectMutation = useSelectBitbucketRepositories();
 
   // Local state
-  const [selectedProjects, setSelectedProjects] = React.useState<Set<number>>(new Set());
+  const [selectedRepositories, setSelectedRepositories] = React.useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = React.useState("");
 
-  // Extract projects from query data and filter out already installed ones
-  const allProjects = data?.projects || [];
-  const installedProjectIds = React.useMemo(() => {
-    if (!installedReposData?.repositories) return new Set<number>();
+  // Extract repositories from query data and filter out already installed ones
+  const allRepositories = data?.repositories || [];
+  const installedRepoIds = React.useMemo(() => {
+    if (!installedReposData?.repositories) return new Set<string>();
     return new Set(
       installedReposData.repositories
-        .filter(repo => repo.vcs_type === 'gitlab')
-        .map(repo => Number(repo.id))
+        .filter(repo => repo.vcs_type === 'bitbucket')
+        .map(repo => String(repo.id))
     );
   }, [installedReposData]);
 
-  const projects = React.useMemo(() => {
-    return allProjects.filter(project => !installedProjectIds.has(project.id));
-  }, [allProjects, installedProjectIds]);
+  const repositories = React.useMemo(() => {
+    return allRepositories.filter(repo => !installedRepoIds.has(repo.uuid));
+  }, [allRepositories, installedRepoIds]);
 
   const error = queryError?.message || null;
 
@@ -64,69 +65,67 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
     refreshMutation.mutate();
   };
 
-  // Filter projects based on search query
-  const filteredProjects = projects.filter((project) => {
+  // Filter repositories based on search query
+  const filteredRepositories = repositories.filter((repo) => {
     const searchLower = searchQuery.toLowerCase();
     return (
-      project.path_with_namespace.toLowerCase().includes(searchLower) ||
-      project.name.toLowerCase().includes(searchLower) ||
-      (project.description && project.description.toLowerCase().includes(searchLower))
+      repo.full_name.toLowerCase().includes(searchLower) ||
+      repo.name.toLowerCase().includes(searchLower) ||
+      (repo.description && repo.description.toLowerCase().includes(searchLower)) ||
+      repo.workspace_info.name.toLowerCase().includes(searchLower)
     );
   });
 
-  // Toggle project selection
-  const toggleProject = (projectId: number) => {
-    const newSelected = new Set(selectedProjects);
-    if (newSelected.has(projectId)) {
-      newSelected.delete(projectId);
+  // Toggle repository selection
+  const toggleRepository = (repoUuid: string) => {
+    const newSelected = new Set(selectedRepositories);
+    if (newSelected.has(repoUuid)) {
+      newSelected.delete(repoUuid);
     } else {
-      newSelected.add(projectId);
+      newSelected.add(repoUuid);
     }
-    setSelectedProjects(newSelected);
+    setSelectedRepositories(newSelected);
   };
 
-  // Toggle select all filtered projects
+  // Toggle select all filtered repositories
   const toggleSelectAll = () => {
-    // Check if every filtered project is currently selected
-    const allFilteredSelected = filteredProjects.every((project) => selectedProjects.has(project.id));
+    // Check if every filtered repository is currently selected
+    const allFilteredSelected = filteredRepositories.every((repo) => selectedRepositories.has(repo.uuid));
 
-    if (allFilteredSelected && filteredProjects.length > 0) {
-      // If all filtered projects are selected, deselect only the filtered ones
-      const newSelected = new Set(selectedProjects);
-      filteredProjects.forEach((project) => newSelected.delete(project.id));
-      setSelectedProjects(newSelected);
+    if (allFilteredSelected && filteredRepositories.length > 0) {
+      // If all filtered repositories are selected, deselect only the filtered ones
+      const newSelected = new Set(selectedRepositories);
+      filteredRepositories.forEach((repo) => newSelected.delete(repo.uuid));
+      setSelectedRepositories(newSelected);
     } else {
-      // Otherwise, select all filtered projects (preserving existing selections)
-      const newSelected = new Set(selectedProjects);
-      filteredProjects.forEach((project) => newSelected.add(project.id));
-      setSelectedProjects(newSelected);
+      // Otherwise, select all filtered repositories (preserving existing selections)
+      const newSelected = new Set(selectedRepositories);
+      filteredRepositories.forEach((repo) => newSelected.add(repo.uuid));
+      setSelectedRepositories(newSelected);
     }
   };
 
   // Install selected repositories using React Query mutation
   const handleInstall = () => {
-    if (selectedProjects.size === 0) return;
+    if (selectedRepositories.size === 0) return;
 
+    // Redirect immediately to repositories page with loading state
+    router.push(`/dashboard/${organizationId}/repositories`);
+
+    // Trigger the mutation (will complete in background)
     selectMutation.mutate({
-      project_ids: Array.from(selectedProjects),
-      projects: projects,
-    }, {
-      onSuccess: () => {
-        router.push(`/dashboard/${organizationId}/repositories`);
-      },
-      onError: (error) => {
-        // Error will be handled by the component's error display
-      }
+      repository_ids: Array.from(selectedRepositories),
+      repositories: repositories,
     });
   };
 
   // Loading state
-  if (isLoading || isLoadingRepos) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-[#00617b] mx-auto mb-4" />
-          <p className="text-slate-600">Loading GitLab projects...</p>
+          <p className="text-slate-600">Loading Bitbucket repositories...</p>
         </div>
       </div>
     );
@@ -151,7 +150,7 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
             <div className="flex items-start gap-3">
               <XCircle className="h-5 w-5 text-red-600 mt-0.5" />
               <div className="flex-1">
-                <h3 className="font-medium text-red-900">Error Loading Projects</h3>
+                <h3 className="font-medium text-red-900">Error Loading Repositories</h3>
                 <p className="text-sm text-red-700 mt-1">{error}</p>
                 {isPermissionError && (
                   <div className="mt-4">
@@ -194,9 +193,9 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
             <ArrowLeft className="h-4 w-4" />
             Back to Repositories
           </Button>
-          <h1 className="text-2xl font-semibold text-slate-900">Select GitLab Projects</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Select Bitbucket Repositories</h1>
           <p className="text-slate-600 mt-1">
-            Choose which projects to connect for code review
+            Choose which repositories to connect for code review
           </p>
         </div>
       </div>
@@ -206,7 +205,7 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input
-            placeholder="Search projects..."
+            placeholder="Search repositories..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -223,13 +222,13 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
             {refreshMutation.isPending ? 'Refreshing...' : 'Refresh'}
           </Button>
           <Button variant="outline" onClick={toggleSelectAll} disabled={selectMutation.isPending}>
-            {selectedProjects.size === filteredProjects.length && filteredProjects.length > 0
+            {selectedRepositories.size === filteredRepositories.length && filteredRepositories.length > 0
               ? "Deselect All"
-              : `Select All (${filteredProjects.length})`}
+              : `Select All (${filteredRepositories.length})`}
           </Button>
           <Button
             onClick={handleInstall}
-            disabled={selectedProjects.size === 0 || selectMutation.isPending}
+            disabled={selectedRepositories.size === 0 || selectMutation.isPending}
             className="gap-2 bg-[#00617b] hover:bg-[#004d61]"
           >
             {selectMutation.isPending ? (
@@ -239,64 +238,67 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
               </>
             ) : (
               <>
-                Install ({selectedProjects.size})
+                Install ({selectedRepositories.size})
               </>
             )}
           </Button>
         </div>
       </div>
 
-      {/* Projects List */}
+      {/* Repositories List */}
       <div className="space-y-3">
-        {filteredProjects.length === 0 ? (
+        {filteredRepositories.length === 0 ? (
           <Card>
             <CardContent className="pt-6 text-center">
               <GitBranch className="h-12 w-12 text-slate-400 mx-auto mb-4" />
               <p className="text-slate-600">
-                {searchQuery ? "No projects match your search" : "No projects available"}
+                {searchQuery ? "No repositories match your search" : "No repositories available"}
               </p>
             </CardContent>
           </Card>
         ) : (
-          filteredProjects.map((project) => (
+          filteredRepositories.map((repo) => (
             <Card
-              key={project.id}
+              key={repo.uuid}
               className={`cursor-pointer transition-all ${
-                selectedProjects.has(project.id)
+                selectedRepositories.has(repo.uuid)
                   ? "border-[#00617b] bg-[#00617b]/5"
                   : "border-slate-200 hover:border-slate-300"
               }`}
-              onClick={() => toggleProject(project.id)}
+              onClick={() => toggleRepository(repo.uuid)}
             >
               <CardContent className="pt-6">
                 <div className="flex items-start gap-4">
                   <Checkbox
-                    checked={selectedProjects.has(project.id)}
+                    checked={selectedRepositories.has(repo.uuid)}
                     onCheckedChange={() => {
                       // Prevent event from bubbling to Card onClick
-                      toggleProject(project.id);
+                      toggleRepository(repo.uuid);
                     }}
                     onClick={(e) => e.stopPropagation()}
                     className="mt-1"
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-medium text-slate-900">{project.path_with_namespace}</h3>
+                      <h3 className="font-medium text-slate-900">{repo.full_name}</h3>
                       <Badge variant="outline" className="gap-1">
-                        {project.visibility === "private" ? (
+                        {repo.is_private ? (
                           <><Lock className="h-3 w-3" /> Private</>
                         ) : (
                           <><Globe className="h-3 w-3" /> Public</>
                         )}
                       </Badge>
+                      <Badge variant="secondary" className="text-xs">
+                        {repo.workspace_info.name}
+                      </Badge>
                     </div>
-                    {project.description && (
-                      <p className="text-sm text-slate-600 mt-1 line-clamp-2">{project.description}</p>
+                    {repo.description && (
+                      <p className="text-sm text-slate-600 mt-1 line-clamp-2">{repo.description}</p>
                     )}
                     <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
-                      <span>Default branch: {project.default_branch}</span>
+                      <span>Workspace: {repo.workspace_info.slug}</span>
                       <span>•</span>
-                      <span>Last activity: {new Date(project.last_activity_at).toLocaleDateString()}</span>
+                      <span>Last updated: {new Date(repo.updated_on).toLocaleDateString()}</span>
                     </div>
                   </div>
                 </div>

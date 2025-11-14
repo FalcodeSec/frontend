@@ -4,8 +4,9 @@ import React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LoadingSpinner } from "@/src/components/dashboard/loading-spinner";
 import { Button } from "@/src/components/ui/button";
-import { apiFetch } from "@/src/lib/api";
 import { useToast } from "@/src/components/ui/use-toast";
+import { useRepositories, useRemoveRepository, type Repository } from "@/src/hooks/use-repositories";
+import { useSession } from "@/src/hooks/use-session";
 import {
   Table,
   TableBody,
@@ -71,25 +72,6 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-// Repository interface with enhanced fields
-interface Repository {
-  id?: number;
-  name: string;
-  full_name?: string;
-  description?: string;
-  private?: boolean;
-  language?: string;
-  updated_at?: string;
-  html_url?: string;
-  // Enhanced fields (will be added later from backend)
-  vulnerability_count?: number;
-  recent_activity?: number; // PRs in last 7 days
-  agent_assigned?: string; // LLM model name
-  monitoring_enabled?: boolean;
-  last_scan?: string;
-  health_score?: "healthy" | "warning" | "critical";
-}
-
 // LLM Models for agent assignment
 const LLM_MODELS = [
   { value: "gpt-4.1", label: "GPT-4.1", provider: "OpenAI" },
@@ -113,11 +95,34 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  // Data state
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [repositories, setRepositories] = React.useState<Repository[]>([]);
-  const [userLogin, setUserLogin] = React.useState<string>("");
+  // Use React Query hooks for data fetching
+  const { data: repoData, isLoading, error: queryError } = useRepositories();
+  const { data: sessionData } = useSession();
+  const removeRepositoryMutation = useRemoveRepository();
+
+  // Extract repositories and user login from query data
+  const repositories = React.useMemo(() => {
+    if (!repoData?.repositories) return [];
+
+    // Enhance repositories with mock data (TODO: get from backend)
+    return repoData.repositories.map((repo, index) => {
+      const seed = typeof repo.id === 'number' ? repo.id : index;
+      return {
+        ...repo,
+        vulnerability_count: seed % 15,
+        recent_activity: (seed * 7) % 20,
+        agent_assigned: index % 3 === 0 ? "gpt-4o" : index % 3 === 1 ? "claude-3-sonnet" : undefined,
+        monitoring_enabled: index % 2 === 0,
+        last_scan: new Date(Date.now() - (seed % 7) * 24 * 60 * 60 * 1000).toISOString(),
+        health_score:
+          seed % 3 === 0 ? "healthy" :
+          seed % 3 === 1 ? "warning" : "critical" as const,
+      };
+    });
+  }, [repoData]);
+
+  const userLogin = repoData?.user_login || "";
+  const error = queryError?.message || null;
 
   // Filter and search state
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -131,65 +136,21 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   // Remove repository dialog state
   const [removeDialogOpen, setRemoveDialogOpen] = React.useState(false);
   const [repositoryToRemove, setRepositoryToRemove] = React.useState<{
-    id: number;
+    id: number | string;
     name: string;
   } | null>(null);
-  const [isRemoving, setIsRemoving] = React.useState(false);
 
-  // Add repository loading state
-  const [isAddingRepository, setIsAddingRepository] = React.useState(false);
-
-  // Handle GitLab connection redirect
+  // Handle VCS connection redirects
   React.useEffect(() => {
     const connectParam = searchParams.get("connect");
     if (connectParam === "gitlab") {
       // Redirect to GitLab repository selection page
       router.push(`/dashboard/${organizationId}/repositories/select-gitlab`);
+    } else if (connectParam === "bitbucket") {
+      // Redirect to Bitbucket repository selection page
+      router.push(`/dashboard/${organizationId}/repositories/select-bitbucket`);
     }
   }, [searchParams, router, organizationId]);
-
-  // Fetch repositories with enhanced data
-  const fetchRepositories = React.useCallback(async () => {
-    try {
-      setIsLoading(true);
-
-      const response = await apiFetch('/api/v1/repositories/');
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch repositories");
-      }
-
-      const data = await response.json();
-
-      // Enhance repositories with mock data (TODO: get from backend)
-      const enhancedRepos = (data.repositories || []).map((repo: Repository, index: number) => {
-        const seed = repo.id || index;
-        return {
-          ...repo,
-          vulnerability_count: seed % 15,
-          recent_activity: (seed * 7) % 20,
-          agent_assigned: index % 3 === 0 ? "gpt-4o" : index % 3 === 1 ? "claude-3-sonnet" : undefined,
-          monitoring_enabled: index % 2 === 0,
-          last_scan: new Date(Date.now() - (seed % 7) * 24 * 60 * 60 * 1000).toISOString(),
-          health_score:
-            seed % 3 === 0 ? "healthy" :
-            seed % 3 === 1 ? "warning" : "critical",
-        };
-      });
-
-      setRepositories(enhancedRepos);
-      setUserLogin(data.user_login || "");
-    } catch (err) {
-      console.error("Error fetching repositories:", err);
-      setError(err instanceof Error ? err.message : "Failed to load repositories");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    fetchRepositories();
-  }, [fetchRepositories]);
 
   // Reset to page 1 when filters change
   React.useEffect(() => {
@@ -256,73 +217,57 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
 
   // Helper functions
   const handleAddRepository = async () => {
-    setIsAddingRepository(true);
-    setError(null);
+    // Get VCS type from session data
+    const vcsType = sessionData?.vcs || "github";
 
-    try {
-      const response = await apiFetch(`/api/v1/vcs-app/${organizationId}/install`, {
-        method: "POST",
-      });
+    // For GitLab and Bitbucket, redirect directly to selection page
+    if (vcsType === "gitlab") {
+      router.push(`/dashboard/${organizationId}/repositories/select-gitlab`);
+    } else if (vcsType === "bitbucket") {
+      router.push(`/dashboard/${organizationId}/repositories/select-bitbucket`);
+    } else {
+      // GitHub - trigger GitHub App installation flow
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/vcs-app/${organizationId}/install`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${localStorage.getItem("session_token")}`,
+          },
+        });
 
-      if (!response.ok) {
-        const data = await response.json();
-        const errorMessage = data.detail || "Failed to initiate repository installation";
-        setError(errorMessage);
+        if (!response.ok) {
+          const data = await response.json();
+          toast({
+            title: "Installation Failed",
+            description: data.detail || "Failed to initiate GitHub App installation",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const { redirect_url } = await response.json();
+        // Redirect to GitHub App installation page
+        window.location.href = redirect_url;
+      } catch (error) {
         toast({
-          title: "Installation Failed",
-          description: errorMessage,
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to initiate GitHub App installation",
           variant: "destructive",
         });
-        setIsAddingRepository(false);
-        return;
       }
-
-      const { redirect_url } = await response.json();
-      // Clear any previous errors on success
-      setError(null);
-      window.location.href = redirect_url;
-    } catch (error) {
-      const errorMessage = error instanceof Error
-        ? `Failed to add repository: ${error.message}`
-        : "An unexpected error occurred while adding repository";
-      setError(errorMessage);
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
-      setIsAddingRepository(false);
     }
   };
 
-  const openRemoveDialog = (repositoryId: number, repositoryName: string) => {
+  const openRemoveDialog = (repositoryId: number | string, repositoryName: string) => {
     setRepositoryToRemove({ id: repositoryId, name: repositoryName });
     setRemoveDialogOpen(true);
   };
 
   const handleRemoveRepository = async () => {
-    if (!repositoryToRemove || isRemoving) return;
-
-    setIsRemoving(true);
+    if (!repositoryToRemove || removeRepositoryMutation.isPending) return;
 
     try {
-      const response = await apiFetch(`/api/v1/vcs-app/repositories/${repositoryToRemove.id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        console.error("Error removing repository:", data.detail);
-        toast({
-          title: "Failed to remove repository",
-          description: data.detail || "An error occurred while removing the repository.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const result = await response.json();
-      console.log("Repository removed:", result);
+      await removeRepositoryMutation.mutateAsync(repositoryToRemove.id);
 
       // Show success toast
       toast({
@@ -333,18 +278,13 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
       // Close dialog and reset state
       setRemoveDialogOpen(false);
       setRepositoryToRemove(null);
-
-      // Refresh the repositories list
-      await fetchRepositories();
     } catch (error) {
       console.error("Error removing repository:", error);
       toast({
         title: "Failed to remove repository",
-        description: "An unexpected error occurred. Please try again.",
+        description: error instanceof Error ? error.message : "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsRemoving(false);
     }
   };
 
@@ -427,11 +367,10 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
         </div>
         <Button
           onClick={handleAddRepository}
-          disabled={isAddingRepository}
           className="gap-2 bg-[#00617b] hover:bg-[#004d61]"
         >
           <Plus className="h-4 w-4" />
-          {isAddingRepository ? "Adding..." : "Add Repository"}
+          Add Repository
         </Button>
       </div>
 
@@ -941,7 +880,7 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
         open={removeDialogOpen}
         onOpenChange={(open) => {
           // Prevent closing the dialog while removing
-          if (!isRemoving) {
+          if (!removeRepositoryMutation.isPending) {
             setRemoveDialogOpen(open);
           }
         }}
@@ -957,13 +896,13 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isRemoving}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={removeRepositoryMutation.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRemoveRepository}
-              disabled={isRemoving}
+              disabled={removeRepositoryMutation.isPending}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isRemoving ? "Removing..." : "Remove Repository"}
+              {removeRepositoryMutation.isPending ? "Removing..." : "Remove Repository"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,47 +1,22 @@
-import { useEffect, useState } from "react";
-import { apiFetch } from "@/src/lib/api";
+/**
+ * Hook for fetching current organization data
+ * Now uses React Query via useOrgId hook for caching and deduplication
+ */
 
-interface OrganizationData {
-  orgId: string;
-  userId: number;
-  login: string;
-}
+import { useOrgId } from "./use-org-id";
 
+/**
+ * @deprecated This hook is maintained for backward compatibility.
+ * Consider using useOrgId() directly for better type safety and features.
+ */
 export function useCurrentOrganization() {
-  const [orgData, setOrgData] = useState<OrganizationData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchOrgId() {
-      try {
-        const response = await apiFetch('/api/v1/login/user/org-id', {
-          method: 'GET',
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch org ID: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        setOrgData(data);
-        setError(null);
-      } catch (err) {
-        console.error("Error fetching org ID:", err);
-        setError(err instanceof Error ? err.message : "Unknown error");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchOrgId();
-  }, []);
+  const { data, isLoading, error } = useOrgId();
 
   return {
-    orgId: orgData?.orgId || null,
-    userId: orgData?.userId || null,
-    login: orgData?.login || null,
-    loading,
-    error,
+    orgId: data?.orgId || null,
+    userId: null, // Not provided by the new API response
+    login: data?.login || null,
+    loading: isLoading,
+    error: error?.message || null,
   };
 }
