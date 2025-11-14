@@ -51,11 +51,20 @@ export function useGitLabProjects(enabled = true) {
       const response = await apiFetch('/api/v1/vcs-app/gitlab/repositories/available');
       
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          throw new Error('Failed to fetch GitLab projects');
+        }
         throw new Error(errorData.detail || 'Failed to fetch GitLab projects');
       }
       
-      return response.json();
+      try {
+        return await response.json();
+      } catch {
+        throw new Error('Invalid response format from GitLab API');
+      }
     },
     // Keep data fresh for 2 minutes (user can manually refresh if needed)
     staleTime: 2 * 60 * 1000,
@@ -82,11 +91,19 @@ export function useRefreshGitLabProjects() {
       const response = await apiFetch('/api/v1/vcs-app/gitlab/repositories/available?force_refresh=true');
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to refresh GitLab projects');
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to refresh GitLab projects');
+        } catch {
+          throw new Error('Failed to refresh GitLab projects');
+        }
       }
       
-      return response.json();
+      try {
+        return await response.json();
+      } catch {
+        throw new Error('Invalid response format from GitLab API');
+      }
     },
     onSuccess: (data) => {
       // Update the cache with fresh data
@@ -113,11 +130,19 @@ export function useSelectGitLabProjects() {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to install projects');
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to install projects');
+        } catch {
+          throw new Error('Failed to install projects');
+        }
       }
       
-      return response.json();
+      try {
+        return await response.json();
+      } catch {
+        throw new Error('Invalid response format from GitLab API');
+      }
     },
     onSuccess: () => {
       // Invalidate both GitLab projects and main repositories list

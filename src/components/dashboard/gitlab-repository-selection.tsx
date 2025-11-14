@@ -34,7 +34,7 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
 
   // React Query hooks
   const { data, isLoading, error: queryError } = useGitLabProjects();
-  const { data: installedReposData } = useRepositories();
+  const { data: installedReposData, isLoading: isLoadingRepos } = useRepositories();
   const refreshMutation = useRefreshGitLabProjects();
   const selectMutation = useSelectGitLabProjects();
 
@@ -107,18 +107,21 @@ export function GitLabRepositorySelection({ organizationId }: GitLabRepositorySe
   const handleInstall = () => {
     if (selectedProjects.size === 0) return;
 
-    // Redirect immediately to repositories page with loading state
-    router.push(`/dashboard/${organizationId}/repositories`);
-
-    // Trigger the mutation (will complete in background)
     selectMutation.mutate({
       project_ids: Array.from(selectedProjects),
       projects: projects,
+    }, {
+      onSuccess: () => {
+        router.push(`/dashboard/${organizationId}/repositories`);
+      },
+      onError: (error) => {
+        // Error will be handled by the component's error display
+      }
     });
   };
 
   // Loading state
-  if (isLoading) {
+  if (isLoading || isLoadingRepos) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">

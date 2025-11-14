@@ -4,7 +4,17 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { z } from 'zod';
 import { apiFetch, getSessionToken } from '@/src/lib/api';
+
+// Zod schema for runtime validation of session data
+const sessionDataSchema = z.object({
+  valid: z.boolean(),
+  user_id: z.number().optional(),
+  login: z.string().optional(),
+  email: z.string().nullable().optional(),
+  vcs: z.string().optional(),
+});
 
 interface SessionData {
   valid: boolean;
@@ -44,8 +54,21 @@ export function useSession(enabled = true) {
       }
 
       const data = await response.json();
-      console.log('useSession: Session validated successfully:', data);
-      return data;
+
+      // Validate response data with Zod schema
+      const validationResult = sessionDataSchema.safeParse(data);
+
+      if (!validationResult.success) {
+        console.error('useSession: Session data validation failed:', validationResult.error.errors);
+        throw new Error(
+          `Invalid session data format: ${validationResult.error.errors
+            .map(err => `${err.path.join('.')}: ${err.message}`)
+            .join(', ')}`
+        );
+      }
+
+      console.log('useSession: Session validated successfully:', validationResult.data);
+      return validationResult.data;
     },
     // Session data is fresh for 2 minutes
     staleTime: 2 * 60 * 1000,

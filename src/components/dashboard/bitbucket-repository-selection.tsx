@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/src
 import { Checkbox } from "@/src/components/ui/checkbox";
 import { Input } from "@/src/components/ui/input";
 import { Badge } from "@/src/components/ui/badge";
-import { clearSessionToken } from "@/src/lib/api";
+import { clearSessionToken, apiFetch } from "@/src/lib/api";
 import {
   GitBranch,
   Search,

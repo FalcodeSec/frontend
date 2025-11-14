@@ -9,6 +9,9 @@ import { Menu } from "lucide-react";
 import { apiFetch, setSessionToken, clearSessionToken } from "@/src/lib/api";
 import { useSession } from "@/src/hooks/use-session";
 
+// Module-level ref to prevent multiple simultaneous redirects
+const redirectingRef = { current: false };
+
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -25,7 +28,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       const validateAndStoreToken = async () => {
         setIsValidatingToken(true);
         try {
-          console.log("Dashboard: Validating token from URL...");
 
           const response = await apiFetch('/api/v1/login/validate-session', {
             headers: {
@@ -34,8 +36,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           });
 
           if (response.ok) {
-            console.log("Dashboard: Token validated, storing it...");
-
             // Store token in localStorage
             setSessionToken(tokenFromUrl);
 
@@ -44,23 +44,22 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             url.searchParams.delete('session_token');
             window.history.replaceState({}, '', url.toString());
 
-            // Wait a tick to ensure localStorage write is complete
-            await new Promise(resolve => setTimeout(resolve, 50));
-
             // Mark as processed - this will enable the useSession hook
             setTokenProcessed(true);
-
-            // Mark session as ready after a small delay
-            setTimeout(() => setSessionReady(true), 100);
+            setSessionReady(true);
           } else {
-            console.log("Dashboard: Token validation failed");
             clearSessionToken();
-            router.push('/login');
+            if (!redirectingRef.current) {
+              redirectingRef.current = true;
+              router.push('/login');
+            }
           }
         } catch (error) {
-          console.error("Dashboard: Token validation error:", error);
           clearSessionToken();
-          router.push('/login');
+          if (!redirectingRef.current) {
+            redirectingRef.current = true;
+            router.push('/login');
+          }
         } finally {
           setIsValidatingToken(false);
         }
@@ -71,7 +70,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       setTokenProcessed(true);
       setSessionReady(true);
     }
-  }, [searchParams, tokenProcessed, isValidatingToken, router]);
+  }, [searchParams, tokenProcessed, isValidatingToken]);
 
   // Use React Query hook for session validation
   // Only enable after token is stored and ready
@@ -90,15 +89,19 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Handle authentication errors and invalid sessions
   useEffect(() => {
     if (error && tokenProcessed) {
-      console.error("Dashboard: Session validation failed:", error);
       clearSessionToken();
-      router.push('/login');
+      if (!redirectingRef.current) {
+        redirectingRef.current = true;
+        router.push('/login');
+      }
     } else if (tokenProcessed && !isLoading && !sessionData?.valid) {
-      console.log("Dashboard: Session not valid, redirecting to login...", sessionData);
       clearSessionToken();
-      router.push('/login');
+      if (!redirectingRef.current) {
+        redirectingRef.current = true;
+        router.push('/login');
+      }
     }
-  }, [error, tokenProcessed, isLoading, sessionData, router]);
+  }, [error, tokenProcessed, isLoading, sessionData]);
 
   // Show loading while checking authentication or processing token
   if (!tokenProcessed || isValidatingToken || isLoading) {
