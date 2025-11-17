@@ -19,6 +19,11 @@ import { Badge } from "@/src/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Input } from "@/src/components/ui/input";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/src/components/ui/tooltip";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -74,13 +79,7 @@ import {
 
 // LLM Models for agent assignment
 const LLM_MODELS = [
-  { value: "gpt-4.1", label: "GPT-4.1", provider: "OpenAI" },
   { value: "gpt-4o", label: "GPT-4o", provider: "OpenAI" },
-  { value: "claude-3-opus", label: "Claude 3 Opus", provider: "Anthropic" },
-  { value: "claude-3-sonnet", label: "Claude 3 Sonnet", provider: "Anthropic" },
-  { value: "claude-3-haiku", label: "Claude 3 Haiku", provider: "Anthropic" },
-  { value: "gemini-pro", label: "Gemini Pro", provider: "Google" },
-  { value: "llama-3-70b", label: "Llama 3 70B", provider: "Meta" },
 ];
 
 // Main Repositories Page Component
@@ -95,8 +94,10 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  // Use React Query hooks for data fetching
-  const { data: repoData, isLoading, error: queryError } = useRepositories();
+  // Use React Query hooks for data fetching with auto-refresh enabled
+  const { data: repoData, isLoading, error: queryError } = useRepositories({
+    enablePolling: true, // Auto-refresh every 10 seconds to catch scan updates
+  });
   const { data: sessionData } = useSession();
   const removeRepositoryMutation = useRemoveRepository();
 
@@ -104,21 +105,12 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   const repositories = React.useMemo(() => {
     if (!repoData?.repositories) return [];
 
-    // Enhance repositories with mock data (TODO: get from backend)
-    return repoData.repositories.map((repo, index) => {
-      const seed = typeof repo.id === 'number' ? repo.id : index;
-      return {
-        ...repo,
-        vulnerability_count: seed % 15,
-        recent_activity: (seed * 7) % 20,
-        agent_assigned: index % 3 === 0 ? "gpt-4o" : index % 3 === 1 ? "claude-3-sonnet" : undefined,
-        monitoring_enabled: index % 2 === 0,
-        last_scan: new Date(Date.now() - (seed % 7) * 24 * 60 * 60 * 1000).toISOString(),
-        health_score:
-          seed % 3 === 0 ? "healthy" :
-          seed % 3 === 1 ? "warning" : "critical" as const,
-      };
-    });
+    // Use data as returned from backend (already enriched with stats)
+    // Set default agent to gpt-4o if not assigned
+    return repoData.repositories.map(repo => ({
+      ...repo,
+      agent_assigned: repo.agent_assigned || "gpt-4o"
+    }));
   }, [repoData]);
 
   const userLogin = repoData?.user_login || "";
@@ -315,16 +307,31 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   };
 
   const formatTimeAgo = (dateString?: string) => {
-    if (!dateString) return "Never";
+    if (!dateString) return { text: "Never", fullDate: null };
     const date = new Date(dateString);
     const now = new Date();
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-
-    if (diffInHours < 1) return "Just now";
-    if (diffInHours < 24) return `${diffInHours}h ago`;
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    const diffInHours = Math.floor(diffInMinutes / 60);
     const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `${diffInDays}d ago`;
-    return date.toLocaleDateString();
+
+    let text: string;
+    if (diffInSeconds < 60) text = "Just now";
+    else if (diffInMinutes < 60) text = `${diffInMinutes}m ago`;
+    else if (diffInHours < 24) text = `${diffInHours}h ago`;
+    else if (diffInDays < 7) text = `${diffInDays}d ago`;
+    else text = date.toLocaleDateString();
+
+    const fullDate = date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+
+    return { text, fullDate };
   };
 
   // Handle loading state
@@ -614,7 +621,21 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-slate-400" />
-                        <span className="text-sm text-slate-600">{formatTimeAgo(repo.last_scan)}</span>
+                        {(() => {
+                          const timeInfo = formatTimeAgo(repo.last_scan);
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-sm text-slate-600 cursor-help">{timeInfo.text}</span>
+                              </TooltipTrigger>
+                              {timeInfo.fullDate && (
+                                <TooltipContent>
+                                  <p>{timeInfo.fullDate}</p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          );
+                        })()}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
@@ -790,7 +811,21 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
                       </div>
                       <div>
                         <div className="text-xs text-slate-500 mb-1">Last Scan</div>
-                        <div className="text-sm font-medium text-slate-900">{formatTimeAgo(repo.last_scan)}</div>
+                        {(() => {
+                          const timeInfo = formatTimeAgo(repo.last_scan);
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="text-sm font-medium text-slate-900 cursor-help">{timeInfo.text}</div>
+                              </TooltipTrigger>
+                              {timeInfo.fullDate && (
+                                <TooltipContent>
+                                  <p>{timeInfo.fullDate}</p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
