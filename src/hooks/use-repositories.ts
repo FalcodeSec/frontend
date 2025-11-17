@@ -16,7 +16,7 @@ export interface Repository {
   language?: string;
   default_branch?: string;
   vcs_type?: string;
-  // Enhanced fields (may be added by frontend)
+  // Enhanced fields (typically returned by backend stats aggregation)
   vulnerability_count?: number;
   recent_activity?: number;
   agent_assigned?: string;
@@ -30,23 +30,35 @@ export interface RepositoriesResponse {
   user_login: string;
 }
 
+export interface UseRepositoriesOptions {
+  enabled?: boolean;
+  /**
+   * Enable automatic polling to refresh data after scans complete
+   * When true, polls every 10 seconds while page is visible
+   * @default false
+   */
+  enablePolling?: boolean;
+}
+
 /**
  * Hook to fetch user's repositories
  * Uses React Query to cache and deduplicate repository requests
- * 
- * @param enabled - Whether to run the query (default: true)
+ *
+ * @param options - Configuration options
  * @returns Query result with repositories data, loading state, and error
  */
-export function useRepositories(enabled = true) {
+export function useRepositories(options: UseRepositoriesOptions = {}) {
+  const { enabled = true, enablePolling = false } = options;
+
   return useQuery({
     queryKey: ['repositories'],
     queryFn: async (): Promise<RepositoriesResponse> => {
       const response = await apiFetch('/api/v1/repositories/');
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch repositories');
       }
-      
+
       return response.json();
     },
     // Repository list changes moderately, keep fresh for 2 minutes
@@ -59,6 +71,9 @@ export function useRepositories(enabled = true) {
     enabled,
     // Retry once on failure
     retry: 1,
+    // Enable polling if requested (useful for auto-refresh after scans)
+    refetchInterval: enablePolling ? 10000 : false, // Poll every 10 seconds
+    refetchIntervalInBackground: false, // Only poll when tab is visible
   });
 }
 
