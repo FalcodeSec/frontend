@@ -322,7 +322,7 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
     else if (diffInDays < 7) text = `${diffInDays}d ago`;
     else text = date.toLocaleDateString();
 
-    const fullDate = date.toLocaleString('en-US', {
+    const fullDate = date.toLocaleString(undefined, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
