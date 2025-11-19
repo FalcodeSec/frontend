@@ -94,9 +94,9 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  // Use React Query hooks for data fetching with auto-refresh enabled
+  // Use React Query hooks for data fetching
   const { data: repoData, isLoading, error: queryError } = useRepositories({
-    enablePolling: true, // Auto-refresh every 10 seconds to catch scan updates
+    enablePolling: false, // Polling disabled - user can manually refresh
   });
   const { data: sessionData } = useSession();
   const removeRepositoryMutation = useRemoveRepository();
@@ -104,6 +104,9 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
   // Extract repositories and user login from query data
   const repositories = React.useMemo(() => {
     if (!repoData?.repositories) return [];
+
+    // Debug: Log repository data to console
+    console.log('[Repositories] Raw data from backend:', repoData.repositories);
 
     // Use data as returned from backend (already enriched with stats)
     // Set default agent to gpt-4o if not assigned
@@ -199,12 +202,22 @@ export function RepositoriesPage({ organizationId }: RepositoriesPageProps) {
 
   // Calculate stats for overview cards
   const stats = React.useMemo(() => {
-    return {
+    const calculated = {
       total: repositories.length,
       monitored: repositories.filter((r) => r.monitoring_enabled).length,
       vulnerabilities: repositories.reduce((sum, r) => sum + (r.vulnerability_count || 0), 0),
       recentActivity: repositories.reduce((sum, r) => sum + (r.recent_activity || 0), 0),
     };
+
+    // Debug: Log calculated stats
+    console.log('[Repositories] Calculated stats:', calculated);
+    console.log('[Repositories] Individual repo stats:', repositories.map(r => ({
+      name: r.name,
+      vulnerability_count: r.vulnerability_count,
+      recent_activity: r.recent_activity
+    })));
+
+    return calculated;
   }, [repositories]);
 
   // Helper functions
