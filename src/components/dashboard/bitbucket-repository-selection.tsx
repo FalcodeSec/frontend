@@ -297,8 +297,12 @@ export function BitbucketRepositorySelection({ organizationId }: BitbucketReposi
                     )}
                     <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
                       <span>Workspace: {repo.workspace_info.slug}</span>
-                      <span>•</span>
-                      <span>Last updated: {new Date(repo.updated_on).toLocaleDateString()}</span>
+                      {repo.updated_on && (
+                        <>
+                          <span>•</span>
+                          <span>Last updated: {new Date(repo.updated_on).toLocaleDateString()}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

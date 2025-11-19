@@ -23,6 +23,13 @@ export interface BitbucketRepository {
     slug: string;
     name: string;
   };
+  workspace_info: {
+    slug: string;
+    name: string;
+    uuid: string;
+  };
+  created_on?: string;
+  updated_on?: string;
 }
 
 export interface BitbucketRepositoriesResponse {
