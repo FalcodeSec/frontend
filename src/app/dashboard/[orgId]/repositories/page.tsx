@@ -1,4 +1,4 @@
-import { RepositoriesPage } from "src/components/dashboard/repositories-page";
+import { RepositoriesPage } from "@/src/components/dashboard/repositories-page";
 
 export const dynamic = 'force-dynamic';
 
